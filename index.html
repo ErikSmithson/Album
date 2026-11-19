@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Name that album</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1a1033;--panel:#261847;--line:#3a2a63;--ink:#f3eefc;--mute:#a99cc9;--accent:#8b7bff;--good:#5be3a8;--bad:#ff6b86;
+font-family:"Bricolage Grotesque",system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;min-height:100vh;display:flex;justify-content:center;padding:24px 16px}
+main{width:100%;max-width:480px}
+h1{font-size:clamp(34px,9vw,48px);font-weight:800;margin:8px 0 6px;letter-spacing:-.02em;line-height:1}
+p{color:var(--mute);line-height:1.5;margin:0 0 16px}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;border-radius:12px;background:var(--panel);padding:12px 16px;font-weight:600}
+button:hover{background:var(--line)}
+button.primary{background:var(--accent);color:#120a2b}button.primary:hover{background:#a094ff}
+:focus-visible{outline:3px solid var(--good);outline-offset:2px}
+input{width:100%;background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:13px 14px}
+input:focus{border-color:var(--accent);outline:0}
+code{background:var(--panel);padding:2px 6px;border-radius:6px;word-break:break-all;font-size:.9em}
+.msg{color:var(--bad);min-height:1.4em}
+ol{color:var(--mute);line-height:1.7;padding-left:20px}
+.genres{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}
+.genres button{padding:18px 14px;text-align:left;font-size:18px}
+.genres button:last-child{grid-column:1/-1;background:var(--accent);color:#120a2b}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;color:var(--mute)}
+.bar button{padding:8px 12px;font-size:14px}
+.bar b{color:var(--ink)}
+.stage{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;background:var(--panel);box-shadow:0 18px 50px #0008}
+.stage img{position:absolute;inset:0;width:100%;height:100%;display:block}
+#veil{position:absolute;inset:0;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(6,1fr)}
+#veil i{background:repeating-linear-gradient(135deg,#120c24 0 6px,#1d1440 6px 12px);box-shadow:0 0 0 1px #120c24;transition:opacity .6s}
+#veil i.gone{opacity:0}
+#load{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);color:var(--mute)}
+.pips{display:flex;gap:6px;margin:14px 0}
+.pips span{flex:1;height:8px;border-radius:4px;background:var(--good);transition:background .3s}
+.pips span.used{background:var(--line)}
+.row{display:flex;gap:8px}.row input{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.chips span{background:#ff6b8622;color:var(--bad);border-radius:999px;padding:4px 10px;font-size:14px;text-decoration:line-through}
+#hint{color:var(--accent);min-height:1.3em;margin:10px 0 0}
+.res{text-align:center;margin-top:6px}
+.res .t{font-size:24px;font-weight:800;margin:4px 0 0}
+.res .a{color:var(--mute);margin:2px 0 14px}
+.res .s{font-weight:600;margin:0}
+.res .s.win{color:var(--good)}.res .s.lose{color:var(--bad)}
+.shake{animation:sh .3s}@keyframes sh{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+
+<section id="setup" hidden>
+  <h1>Name that album</h1>
+  <p><button class="primary" id="apple">Play now</button></p>
+  <p>Play now uses Apple Music's free catalog: no account, no setup. For Spotify covers instead, connect your own Spotify app once:</p>
+  <ol>
+    <li>Create an app at <code>developer.spotify.com/dashboard</code> (the account owner needs Premium).</li>
+    <li>Add this redirect URI to the app: <code id="redir"></code></li>
+    <li>Paste the app's Client ID below.</li>
+  </ol>
+  <p id="srv" class="msg"></p>
+  <div class="row"><input id="cid" placeholder="Client ID" autocomplete="off"><button class="primary" id="connect">Connect</button></div>
+  <p id="smsg" class="msg"></p>
+</section>
+
+<section id="genres" hidden>
+  <h1>Name that album</h1>
+  <p>Pick a genre. Covers start mostly hidden and uncover with every wrong guess. Albums never run out.</p>
+  <div class="genres" id="glist"></div>
+  <p style="margin-top:18px"><button id="logout">Change music source</button></p>
+</section>
+
+<section id="game" hidden>
+  <div class="bar">
+    <button id="back">Genres</button>
+    <span>Streak <b id="streak">0</b> &nbsp; Best <b id="best">0</b></span>
+  </div>
+  <div class="stage">
+    <img id="cover" alt="Hidden album cover" referrerpolicy="no-referrer">
+    <div id="veil"></div>
+    <div id="load">Finding an album…</div>
+  </div>
+  <div class="pips" id="pips" aria-label="Guesses used"></div>
+  <p class="msg" id="err"></p>
+
+  <div id="play">
+    <form class="row" id="form"><input id="guess" placeholder="Type the album name" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="primary">Guess</button></form>
+    <p id="hint"></p>
+    <div class="chips" id="chips"></div>
+    <p style="margin-top:14px"><button id="skip">Skip this one</button></p>
+  </div>
+
+  <div id="result" class="res" hidden>
+    <p class="s" id="rstatus"></p>
+    <p class="t" id="rtitle"></p>
+    <p class="a" id="rartist"></p>
+    <button class="primary" id="next">Next album</button>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const STEPS = [3, 6, 10, 15, 21, 28, 36];   // tiles showing after 0..6 wrong guesses (36 = fail)
+const MAXW = STEPS.length - 1;
+const GENRES = [
+  ['Pop','pop',2000,2025],['Rock','rock',1995,2025],['Hip-hop','hip hop',1995,2025],['R&B','r&b',1995,2025],
+  ['Country','country',2000,2025],['Electronic','electronic',2000,2025],['Metal','metal',1985,2025],['Indie','indie',2005,2025],
+  ['Jazz','jazz',1960,2020],['K-pop','k-pop',2012,2025],['Latin','latin',2000,2025],['Classic rock','classic rock',1965,1990],
+  ['Mix everything',null]
+];
+const REDIRECT = location.origin + location.pathname;
+const S = {genre:null, pool:[], seen:new Set(), cur:null, wrong:0, guesses:[], order:[], over:true, streak:0, filling:null};
+const LS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { return null; } };
+const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const show = id => ['setup','genres','game'].forEach(s => $('#' + s).hidden = s !== id);
+
+/* ---------- Spotify auth (PKCE, no secret needed) ---------- */
+const b64 = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+async function login() {
+  const id = $('#cid').value.trim();
+  if (!id) return ($('#smsg').textContent = 'Paste your Client ID first.');
+  const ok = location.protocol === 'https:' || (location.protocol === 'http:' && ['127.0.0.1','[::1]'].includes(location.hostname));
+  if (!ok) return ($('#smsg').textContent = 'Spotify only accepts logins from a local server at http://127.0.0.1 (or https). See the note above, or use Play now.');
+  LS('ag_id', id); LS('ag_src', null);
+  const v = b64(crypto.getRandomValues(new Uint8Array(48)));
+  LS('ag_v', v);
+  const c = b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)));
+  location.href = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
+    response_type:'code', client_id:id, redirect_uri:REDIRECT, code_challenge_method:'S256', code_challenge:c });
+}
+async function tokenReq(body) {
+  const r = await fetch('https://accounts.spotify.com/api/token', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({client_id:LS('ag_id'), ...body}) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error_description || 'Spotify login failed');
+  LS('ag_access', j.access_token); LS('ag_exp', Date.now() + j.expires_in * 1000);
+  if (j.refresh_token) LS('ag_refresh', j.refresh_token);
+}
+async function getToken() {
+  if (+LS('ag_exp') > Date.now() + 30000) return LS('ag_access');
+  if (!LS('ag_refresh')) throw new Error('AUTH');
+  try { await tokenReq({grant_type:'refresh_token', refresh_token:LS('ag_refresh')}); } catch { throw new Error('AUTH'); }
+  return LS('ag_access');
+}
+async function search(params) {
+  const r = await fetch('https://api.spotify.com/v1/search?' + new URLSearchParams(params), {headers:{Authorization:'Bearer ' + await getToken()}});
+  if (r.status === 401) { LS('ag_exp', '0'); throw new Error('AUTH'); }
+  if (r.status === 429) throw new Error('Spotify is rate limiting requests. Wait a few seconds, then retry.');
+  if (r.status === 403) throw new Error('Spotify refused the request (403). Development apps need an app owner with Premium.');
+  if (!r.ok) throw new Error('Spotify error ' + r.status);
+  return r.json();
+}
+function logout() { ['ag_access','ag_exp','ag_refresh','ag_v','ag_src'].forEach(k => LS(k, null)); showSetup(); }
+
+/* ---------- Album pool ---------- */
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/&/g,' and ').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim().replace(/^the /,'');
+const strip = s => s.replace(/\s*[\(\[].*?[\)\]]/g,'').replace(/\s+-\s+.*$/,'');
+const ARTISTS = {
+  'pop':['Taylor Swift','Ariana Grande','Dua Lipa','Billie Eilish','Harry Styles','Lady Gaga','Katy Perry','Olivia Rodrigo','Adele','Ed Sheeran'],
+  'rock':['Foo Fighters','Arctic Monkeys','Nirvana','Radiohead','Green Day','Muse','Linkin Park','Red Hot Chili Peppers','Queens of the Stone Age','The Strokes'],
+  'hip hop':['Kendrick Lamar','Drake','Kanye West','Travis Scott','Tyler, the Creator','J. Cole','Eminem','Jay-Z','Nas','Childish Gambino'],
+  'r&b':['Beyoncé','Frank Ocean','SZA','The Weeknd','Usher','Alicia Keys','Rihanna','Daniel Caesar','Brent Faiyaz','Solange'],
+  'country':['Luke Combs','Morgan Wallen','Kacey Musgraves','Chris Stapleton','Johnny Cash','Dolly Parton','Zach Bryan','Shania Twain','Willie Nelson','Carrie Underwood'],
+  'electronic':['Daft Punk','Disclosure','Calvin Harris','Skrillex','deadmau5','Justice','Flume','Fred again..','Avicii','Swedish House Mafia'],
+  'metal':['Metallica','Black Sabbath','Iron Maiden','Slipknot','Megadeth','Tool','Gojira','Pantera','Mastodon','System of a Down'],
+  'indie':['Tame Impala','Vampire Weekend','Bon Iver','Phoebe Bridgers','Mac DeMarco','The National','Mitski','Fleet Foxes','Beach House','Alvvays'],
+  'jazz':['Miles Davis','John Coltrane','Dave Brubeck','Bill Evans','Herbie Hancock','Thelonious Monk','Charles Mingus','Norah Jones','Kamasi Washington','Ella Fitzgerald'],
+  'k-pop':['BTS','BLACKPINK','NewJeans','Stray Kids','TWICE','SEVENTEEN','aespa','EXO','ITZY','LE SSERAFIM'],
+  'latin':['Bad Bunny','Shakira','J Balvin','Rosalía','Karol G','Daddy Yankee','Santana','Maluma','Ozuna','Rauw Alejandro'],
+  'classic rock':['Led Zeppelin','Pink Floyd','The Beatles','The Rolling Stones','Fleetwood Mac','Queen','Eagles','AC/DC','The Who','David Bowie']
+};
+async function fetchApple(g) {
+  const list = ARTISTS[g], artist = list[rnd(0, list.length - 1)];
+  const r = await fetch('https://itunes.apple.com/search?' + new URLSearchParams({term:artist, entity:'album', limit:50, country:'us'}));
+  if (!r.ok) throw new Error('Apple catalog error ' + r.status);
+  const who = norm(artist);
+  for (const a of (await r.json()).results || []) {
+    if (a.collectionType !== 'Album' || a.trackCount < 6 || !a.artworkUrl100 || !norm(a.artistName).includes(who)) continue;
+    if (/\b(live|karaoke|tribute|instrumental|remixes|commentary)\b|- (single|ep)$/i.test(a.collectionName)) continue;
+    const key = norm(strip(a.collectionName)) + '|' + norm(a.artistName);
+    if (S.seen.has(a.collectionId) || S.seen.has(key)) continue;
+    S.seen.add(a.collectionId); S.seen.add(key);
+    S.pool.push({title:a.collectionName, artist:a.artistName, img:a.artworkUrl100.replace('100x100bb', '600x600bb')});
+  }
+}
+async function fetchBatch() {
+  const pick = S.genre || GENRES[rnd(0, GENRES.length - 2)];
+  if (S.src === 'apple') return fetchApple(pick[1]);
+  const [, g, y1, y2] = pick;
+  const q = `genre:"${g}" year:${rnd(y1, y2)}`;
+  const data = await search({q, type:'track', limit:10, offset:rnd(0, 4) * 10});
+  for (const t of data.tracks?.items || []) {
+    const a = t.album;
+    if (!a || a.album_type !== 'album' || a.total_tracks < 6 || !a.images?.length) continue;
+    const artist = a.artists.map(x => x.name).join(', ');
+    const key = norm(strip(a.name)) + '|' + norm(a.artists[0].name);
+    if (S.seen.has(a.id) || S.seen.has(key)) continue;
+    S.seen.add(a.id); S.seen.add(key);
+    S.pool.push({title:a.name, artist, img:a.images[0].url});
+  }
+}
+function fill(min) {
+  if (S.filling) return S.filling;
+  S.filling = (async () => {
+    for (let i = 0; i < 10 && S.pool.length < min; i++) await fetchBatch();
+  })().finally(() => S.filling = null);
+  return S.filling;
+}
+const preload = url => new Promise((res, rej) => { const i = new Image(); i.onload = res; i.onerror = () => rej(new Error('Could not load the cover image.')); i.src = url; });
+
+/* ---------- Guess matching ---------- */
+function lev(a, b) {
+  const m = [...Array(b.length + 1).keys()];
+  for (let i = 1; i <= a.length; i++) {
+    let p = m[0]; m[0] = i;
+    for (let j = 1; j <= b.length; j++) { const t = m[j]; m[j] = Math.min(m[j] + 1, m[j-1] + 1, p + (a[i-1] === b[j-1] ? 0 : 1)); p = t; }
+  }
+  return m[b.length];
+}
+function isCorrect(guess, title) {
+  const g = norm(guess);
+  for (const raw of [strip(title), title]) {
+    const t = norm(raw);
+    if (!t) { if (guess.trim().toLowerCase() === raw.trim().toLowerCase()) return true; continue; }
+    if (g === t) return true;
+    if (t.length >= 4 && g.includes(t)) return true;
+    if (t.length >= 5 && 1 - lev(g, t) / Math.max(g.length, t.length) >= 0.8) return true;
+  }
+  return false;
+}
+
+/* ---------- Game ---------- */
+function reveal(n) { for (let i = 0; i < n; i++) $('#veil').children[S.order[i]].classList.add('gone'); }
+function drawPips() { $('#pips').innerHTML = Array.from({length:MAXW}, (_, i) => `<span class="${i < S.wrong ? 'used' : ''}"></span>`).join(''); }
+function setStreak(n) {
+  S.streak = n; $('#streak').textContent = n;
+  const best = Math.max(n, +LS('ag_best') || 0); LS('ag_best', best); $('#best').textContent = best;
+}
+function startRound(a) {
+  Object.assign(S, {cur:a, wrong:0, guesses:[], over:false, order:[...Array(36).keys()].sort(() => Math.random() - .5)});
+  $('#cover').src = a.img;
+  $('#veil').innerHTML = '<i></i>'.repeat(36);
+  reveal(STEPS[0]);
+  drawPips();
+  $('#chips').innerHTML = ''; $('#hint').textContent = ''; $('#err').textContent = '';
+  $('#guess').value = ''; $('#result').hidden = true; $('#play').hidden = false; $('#load').hidden = true;
+  $('#guess').focus();
+}
+async function next() {
+  $('#load').hidden = false; $('#err').textContent = ''; $('#result').hidden = true; $('#play').hidden = true;
+  try {
+    if (!S.pool.length) await fill(1);
+    if (!S.pool.length) throw new Error('No albums found for this genre. Try another.');
+    const a = S.pool.shift();
+    await preload(a.img);
+    startRound(a);
+    fill(4).catch(() => {});
+  } catch (e) {
+    if (e.message === 'AUTH') return showSetup('Your Spotify session expired. Connect again.');
+    $('#load').hidden = true;
+    $('#err').innerHTML = '';
+    $('#err').append(e.message + ' ');
+    const b = document.createElement('button'); b.textContent = 'Retry'; b.onclick = next; $('#err').append(b);
+  }
+}
+function finish(win, skipped) {
+  S.over = true;
+  reveal(36);
+  setStreak(win ? S.streak + 1 : 0);
+  const n = S.wrong + 1;
+  const s = $('#rstatus');
+  s.className = 's ' + (win ? 'win' : 'lose');
+  s.textContent = win ? `Got it in ${n} ${n === 1 ? 'guess' : 'guesses'}` : (skipped ? 'Skipped' : 'Out of guesses');
+  $('#rtitle').textContent = S.cur.title; $('#rartist').textContent = S.cur.artist;
+  $('#play').hidden = true; $('#result').hidden = false; $('#next').focus();
+}
+function submitGuess(e) {
+  e.preventDefault();
+  if (S.over) return;
+  const v = $('#guess').value.trim();
+  if (!v || S.guesses.includes(norm(v))) return;
+  if (isCorrect(v, S.cur.title)) return finish(true);
+  S.guesses.push(norm(v)); S.wrong++;
+  const c = document.createElement('span'); c.textContent = v; $('#chips').append(c);
+  $('#guess').value = '';
+  $('#form').classList.remove('shake'); void $('#form').offsetWidth; $('#form').classList.add('shake');
+  drawPips();
+  reveal(STEPS[S.wrong]);
+  if (S.wrong >= MAXW) return finish(false);
+  if (S.wrong >= 3) $('#hint').textContent = 'Hint: the artist is ' + S.cur.artist;
+  $('#guess').focus();
+}
+
+/* ---------- Screens ---------- */
+function showSetup(msg) {
+  show('setup');
+  $('#redir').textContent = REDIRECT;
+  $('#cid').value = LS('ag_id') || '';
+  $('#smsg').textContent = msg || '';
+  const bad = location.protocol === 'about:' ? 'This preview blocks outside connections, so no music service can load here. Download the file and open it in your browser.'
+    : location.protocol === 'file:' ? 'Spotify login needs a local server: run python3 -m http.server 8888 in this folder, then visit http://127.0.0.1:8888/' + (location.pathname.split('/').pop() || '') + '. Play now works without one.'
+    : location.hostname === 'localhost' ? 'Spotify rejects "localhost" redirects. Use http://127.0.0.1:' + location.port + location.pathname + ' instead.' : '';
+  $('#srv').textContent = bad;
+}
+function showGenres() {
+  show('genres');
+  $('#glist').innerHTML = '';
+  GENRES.forEach(g => {
+    const b = document.createElement('button'); b.textContent = g[0];
+    b.onclick = () => { S.genre = g[1] ? g : null; S.pool = []; setStreak(0); show('game'); next(); };
+    $('#glist').append(b);
+  });
+}
+
+$('#connect').onclick = login;
+$('#apple').onclick = () => { S.src = 'apple'; LS('ag_src', 'apple'); showGenres(); };
+$('#cid').onkeydown = e => e.key === 'Enter' && login();
+$('#logout').onclick = logout;
+$('#back').onclick = showGenres;
+$('#form').onsubmit = submitGuess;
+$('#skip').onclick = () => !S.over && finish(false, true);
+$('#next').onclick = next;
+
+(async () => {
+  const p = new URLSearchParams(location.search);
+  let msg = '';
+  if (p.get('error')) msg = 'Spotify login was cancelled. Try again.';
+  if (p.get('code')) {
+    try { await tokenReq({grant_type:'authorization_code', code:p.get('code'), redirect_uri:REDIRECT, code_verifier:LS('ag_v')}); }
+    catch (e) { msg = e.message; }
+  }
+  if (p.get('code') || p.get('error')) history.replaceState({}, '', location.pathname);
+  $('#best').textContent = LS('ag_best') || 0;
+  S.src = LS('ag_src') === 'apple' ? 'apple' : 'spotify';
+  (S.src === 'apple' || LS('ag_access')) ? showGenres() : showSetup(msg);
+})();
+</script>
+</body>
+</html>
